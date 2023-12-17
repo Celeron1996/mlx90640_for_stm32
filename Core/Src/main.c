@@ -22,7 +22,8 @@
 
 /* Private includes ----------------------------------------------------------*/
 /* USER CODE BEGIN Includes */
-
+#include <stdio.h>
+#include "MLX90640_API.h"
 /* USER CODE END Includes */
 
 /* Private typedef -----------------------------------------------------------*/
@@ -32,6 +33,15 @@
 
 /* Private define ------------------------------------------------------------*/
 /* USER CODE BEGIN PD */
+
+#define  FPS2HZ   0x02
+#define  FPS4HZ   0x03
+#define  FPS8HZ   0x04
+#define  FPS16HZ  0x05
+#define  FPS32HZ  0x06
+#define  MLX90640_ADDR 0x33
+#define	 RefreshRate FPS16HZ 
+#define  TA_SHIFT 8 //Default shift for MLX90640 in open air
 
 /* USER CODE END PD */
 
@@ -46,6 +56,12 @@ I2C_HandleTypeDef hi2c1;
 UART_HandleTypeDef huart1;
 
 /* USER CODE BEGIN PV */
+
+static uint16_t eeMLX90640[832];  
+static float mlx90640To[768];
+uint16_t frame[834];
+float emissivity=0.95;
+int status;
 
 /* USER CODE END PV */
 
@@ -96,15 +112,69 @@ int main(void)
   MX_USB_DEVICE_Init();
   /* USER CODE BEGIN 2 */
 
+	paramsMLX90640 mlx90640;
+	
+	HAL_Delay(1500);	/* 等待mlx90640稳定 */
+
+	status = MLX90640_SetRefreshRate(MLX90640_ADDR, RefreshRate);
+	if (status != 0) printf("\r\nMLX90640_SetRefreshRate error with code:%d\r\n",status);
+	
+	status = MLX90640_SetChessMode(MLX90640_ADDR);
+	if (status != 0) printf("\r\nMLX90640_SetChessMode error with code:%d\r\n",status);
+
+  status = MLX90640_DumpEE(MLX90640_ADDR, eeMLX90640);
+  if (status != 0) printf("\r\nload system parameters error with code:%d\r\n",status);
+
+  status = MLX90640_ExtractParameters(eeMLX90640, &mlx90640);
+  if (status != 0) printf("\r\nParameter extraction failed with error code:%d\r\n",status);
+	
   /* USER CODE END 2 */
 
   /* Infinite loop */
   /* USER CODE BEGIN WHILE */
+
   while (1)
   {
     /* USER CODE END WHILE */
 
     /* USER CODE BEGIN 3 */
+		
+		int status = MLX90640_GetFrameData(MLX90640_ADDR, frame);
+		if (status < 0)
+		{
+			printf("GetFrame Error: %d\r\n",status);
+			HAL_Delay(3000);
+			continue;
+		}
+		else
+		{
+			/*
+			printf("GetFrame success: %d\r\n",status);
+			HAL_Delay(3000);
+			for (uint16_t i = 0; i < sizeof(frame)/2; i++)
+			{
+				printf("--%d--", frame[i]);
+			}
+			continue;*/
+		}
+		float vdd = MLX90640_GetVdd(frame, &mlx90640);
+		float Ta = MLX90640_GetTa(frame, &mlx90640);
+
+		float tr = Ta - TA_SHIFT; //Reflected temperature based on the sensor ambient temperature
+		//printf("vdd:  %f Tr: %f\r\n",vdd,tr);
+		MLX90640_CalculateTo(frame, &mlx90640, emissivity , tr, mlx90640To);
+
+		printf("\r\n==========================IAMLIUBO MLX90640 WITH STM32 SWI2C EXAMPLE Github:github.com/imliubo==========================\r\n");
+		for(int i = 0; i < 768; i++){
+			if(i%32 == 0 && i != 0){
+				printf("\r\n");
+			}
+			printf("%2.2f ",mlx90640To[i]);
+		}
+		printf("\r\n==========================IAMLIUB0 MLX90640 WITH STM32 SWI2C EXAMPLE Github:github.com/imliubo==========================\r\n");
+		HAL_Delay(3000);
+		
+		
   }
   /* USER CODE END 3 */
 }
@@ -241,6 +311,16 @@ static void MX_GPIO_Init(void)
 }
 
 /* USER CODE BEGIN 4 */
+
+FILE __stdout;
+
+int fputc(int c, FILE *f)
+{
+	uint8_t byte = (uint8_t)c;
+	f = f;
+	HAL_UART_Transmit(&huart1, (const uint8_t * )&byte, 1, 20);
+	return 0;
+}
 
 /* USER CODE END 4 */
 

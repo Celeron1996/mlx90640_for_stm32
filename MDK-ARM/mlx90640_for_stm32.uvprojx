@@ -587,6 +587,21 @@
           </Files>
         </Group>
         <Group>
+          <GroupName>Drivers/MLX90640</GroupName>
+          <Files>
+            <File>
+              <FileName>MLX90640_I2C_Driver.c</FileName>
+              <FileType>1</FileType>
+              <FilePath>..\Core\Src\MLX90640_I2C_Driver.c</FilePath>
+            </File>
+            <File>
+              <FileName>MLX90640_API.c</FileName>
+              <FileType>1</FileType>
+              <FilePath>..\Core\Src\MLX90640_API.c</FilePath>
+            </File>
+          </Files>
+        </Group>
+        <Group>
           <GroupName>::CMSIS</GroupName>
         </Group>
       </Groups>
@@ -605,5 +620,14 @@
     </components>
     <files/>
   </RTE>
+
+  <LayerInfo>
+    <Layers>
+      <Layer>
+        <LayName>mlx90640_for_stm32</LayName>
+        <LayPrjMark>1</LayPrjMark>
+      </Layer>
+    </Layers>
+  </LayerInfo>
 
 </Project>
