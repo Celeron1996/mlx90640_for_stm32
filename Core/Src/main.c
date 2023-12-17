@@ -24,6 +24,7 @@
 /* USER CODE BEGIN Includes */
 #include <stdio.h>
 #include "MLX90640_API.h"
+#include "usbd_cdc_if.h"
 /* USER CODE END Includes */
 
 /* Private typedef -----------------------------------------------------------*/
@@ -76,7 +77,7 @@ static void MX_USART1_UART_Init(void);
 
 /* Private user code ---------------------------------------------------------*/
 /* USER CODE BEGIN 0 */
-
+uint8_t usb_send_str[] = "this message from stm32!";
 /* USER CODE END 0 */
 
 /**
@@ -173,7 +174,7 @@ int main(void)
 		}
 		printf("\r\n==========================IAMLIUB0 MLX90640 WITH STM32 SWI2C EXAMPLE Github:github.com/imliubo==========================\r\n");
 		HAL_Delay(3000);
-		
+		CDC_Transmit_FS(usb_send_str, sizeof(usb_send_str)-1);
 		
   }
   /* USER CODE END 3 */
