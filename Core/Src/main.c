@@ -41,8 +41,10 @@
 #define  FPS16HZ  0x05
 #define  FPS32HZ  0x06
 #define  MLX90640_ADDR 0x33
-#define	 RefreshRate FPS16HZ 
+
 #define  TA_SHIFT 8 //Default shift for MLX90640 in open air
+
+#define USB_SET_CMD	(0xAA)	/* usb cdc 控制下发此命令，则认为控制mlx90640 */
 
 /* USER CODE END PD */
 
@@ -60,9 +62,30 @@ UART_HandleTypeDef huart1;
 
 static uint16_t eeMLX90640[832];  
 static float mlx90640To[768];
+static int16_t usb_buffer[768 + 8];	//四个 0xFF帧头，+ 四个 0xEF 帧尾
 uint16_t frame[834];
 float emissivity=0.95;
-int status;
+
+/* fps 设置 */
+uint8_t	RefreshRate = FPS16HZ; 
+uint8_t delay_fps = 16;	//默认16
+
+enum type_def{
+	type_null				= 0,
+	type_set_fps,
+	type_get_fps,
+} ;
+
+#define USB_CONTROL_DATA_SIZE	(12)
+volatile struct {
+	uint8_t flag;
+	uint8_t type;
+	uint8_t length;
+	uint8_t data[USB_CONTROL_DATA_SIZE];
+	uint8_t data_tx[USB_CONTROL_DATA_SIZE];
+} usb_control_hand;
+
+paramsMLX90640 mlx90640;
 
 /* USER CODE END PV */
 
@@ -72,6 +95,10 @@ static void MX_GPIO_Init(void);
 static void MX_I2C1_Init(void);
 static void MX_USART1_UART_Init(void);
 /* USER CODE BEGIN PFP */
+
+void usb_control_handler(void);
+void mlx90640_refresh(void);
+
 
 /* USER CODE END PFP */
 
@@ -87,7 +114,9 @@ uint8_t usb_send_str[] = "this message from stm32!";
 int main(void)
 {
   /* USER CODE BEGIN 1 */
-
+  
+	int status;
+	
   /* USER CODE END 1 */
 
   /* MCU Configuration--------------------------------------------------------*/
@@ -113,7 +142,7 @@ int main(void)
   MX_USB_DEVICE_Init();
   /* USER CODE BEGIN 2 */
 
-	paramsMLX90640 mlx90640;
+	
 	
 	HAL_Delay(1500);	/* 等待mlx90640稳定 */
 
@@ -139,42 +168,9 @@ int main(void)
     /* USER CODE END WHILE */
 
     /* USER CODE BEGIN 3 */
-		
-		int status = MLX90640_GetFrameData(MLX90640_ADDR, frame);
-		if (status < 0)
-		{
-			printf("GetFrame Error: %d\r\n",status);
-			HAL_Delay(3000);
-			continue;
-		}
-		else
-		{
-			/*
-			printf("GetFrame success: %d\r\n",status);
-			HAL_Delay(3000);
-			for (uint16_t i = 0; i < sizeof(frame)/2; i++)
-			{
-				printf("--%d--", frame[i]);
-			}
-			continue;*/
-		}
-		float vdd = MLX90640_GetVdd(frame, &mlx90640);
-		float Ta = MLX90640_GetTa(frame, &mlx90640);
 
-		float tr = Ta - TA_SHIFT; //Reflected temperature based on the sensor ambient temperature
-		//printf("vdd:  %f Tr: %f\r\n",vdd,tr);
-		MLX90640_CalculateTo(frame, &mlx90640, emissivity , tr, mlx90640To);
-
-		printf("\r\n==========================IAMLIUBO MLX90640 WITH STM32 SWI2C EXAMPLE Github:github.com/imliubo==========================\r\n");
-		for(int i = 0; i < 768; i++){
-			if(i%32 == 0 && i != 0){
-				printf("\r\n");
-			}
-			printf("%2.2f ",mlx90640To[i]);
-		}
-		printf("\r\n==========================IAMLIUB0 MLX90640 WITH STM32 SWI2C EXAMPLE Github:github.com/imliubo==========================\r\n");
-		HAL_Delay(3000);
-		CDC_Transmit_FS(usb_send_str, sizeof(usb_send_str)-1);
+		usb_control_handler();
+		mlx90640_refresh();
 		
   }
   /* USER CODE END 3 */
@@ -322,6 +318,172 @@ int fputc(int c, FILE *f)
 	HAL_UART_Transmit(&huart1, (const uint8_t * )&byte, 1, 20);
 	return 0;
 }
+
+
+/**
+  * @brief  CDC 控制接口函数的转发函数
+  * @param  cmd: Command code
+  * @param  pbuf: Buffer containing command data (request parameters)
+  * @param  length: Number of data to be sent (in bytes)
+  * @retval null
+  */
+void CDC_Control_FS_forwarding(uint8_t cmd, uint8_t* pbuf, uint16_t length)
+{
+	if ((cmd == USB_SET_CMD) && (length > 0))
+	{
+		usb_control_hand.type = pbuf[0];
+		if ((length - 1) <= USB_CONTROL_DATA_SIZE)
+		{
+			usb_control_hand.length = length - 1;
+			for (uint8_t i = 0; i < (length - 1); i++)
+			{
+				usb_control_hand.data[i] = pbuf[1 + i];
+			}
+		}
+		usb_control_hand.flag = 1;
+	}
+}
+
+
+/**
+  * @brief  处理usb控制端口的数据
+  * @retval null
+  */
+void usb_control_handler(void)
+{
+	if (usb_control_hand.flag)
+	{
+		switch (usb_control_hand.type)
+		{
+			case type_set_fps:
+			{
+				if (usb_control_hand.data[0] == 2)
+				{
+					if (MLX90640_SetRefreshRate(MLX90640_ADDR, FPS2HZ) == 0)
+					{
+						RefreshRate = FPS2HZ;
+						delay_fps = 2;
+					}
+					else
+					{
+						printf("set fps error!\r\n");
+					}
+				}
+				else if (usb_control_hand.data[0] == 4)
+				{
+					if (MLX90640_SetRefreshRate(MLX90640_ADDR, FPS4HZ) == 0)
+					{
+						RefreshRate = FPS4HZ;
+						delay_fps = 4;
+					}
+					else
+					{
+						printf("set fps error!\r\n");
+					}
+				}
+				else if (usb_control_hand.data[0] == 8)
+				{
+					if (MLX90640_SetRefreshRate(MLX90640_ADDR, FPS8HZ) == 0)
+					{
+						RefreshRate = FPS8HZ;
+						delay_fps = 8;
+					}
+					else
+					{
+						printf("set fps error!\r\n");
+					}
+				}
+				else if (usb_control_hand.data[0] == 16)
+				{
+					if (MLX90640_SetRefreshRate(MLX90640_ADDR, FPS16HZ) == 0)
+					{
+						RefreshRate = FPS16HZ;
+						delay_fps = 16;
+					}
+					else
+					{
+						printf("set fps error!\r\n");
+					}
+				}
+				else if (usb_control_hand.data[0] == 32)
+				{
+					if (MLX90640_SetRefreshRate(MLX90640_ADDR, FPS32HZ) == 0)
+					{
+						RefreshRate = FPS32HZ;
+						delay_fps = 32;
+					}
+					else
+					{
+						printf("set fps error!\r\n");
+					}
+				}
+				break;
+			}
+			case type_get_fps:
+			{
+				usb_control_hand.data[0] = 0xFF;
+				usb_control_hand.data[1] = 0xFF;
+				usb_control_hand.data[2] = 0xFF;
+				usb_control_hand.data[3] = 0xFF;
+				usb_control_hand.data[4] = delay_fps;
+				usb_control_hand.data[5] = 0xEF;
+				usb_control_hand.data[6] = 0xEF;
+				usb_control_hand.data[7] = 0xEF;
+				usb_control_hand.data[8] = 0xEF;
+				CDC_Transmit_FS((uint8_t *)usb_control_hand.data, 9);
+				HAL_Delay(100);
+				break;
+			}
+		}
+
+		usb_control_hand.flag = 0;
+	}
+}
+
+
+
+/**
+  * @brief  采集 mlx 数据并上报
+  * @retval null
+  */
+void mlx90640_refresh(void)
+{
+	int status;
+
+	status = MLX90640_GetFrameData(MLX90640_ADDR, frame);
+	if (status < 0)
+	{
+		printf("GetFrame Error: %d\r\n",status);
+		HAL_Delay(500);
+		return;
+	}
+
+	float vdd = MLX90640_GetVdd(frame, &mlx90640);
+	float Ta = MLX90640_GetTa(frame, &mlx90640);
+	
+	float tr = Ta - TA_SHIFT; //Reflected temperature based on the sensor ambient temperature
+
+	MLX90640_CalculateTo(frame, &mlx90640, emissivity , tr, mlx90640To);
+	
+	for(int i = 0; i < 768; i++){
+		usb_buffer[4 + i] = (int16_t)(mlx90640To[i]*100);
+	}
+
+	usb_buffer[0] = 0xFF;
+	usb_buffer[1] = 0xFF;
+	usb_buffer[2] = 0xFF;
+	usb_buffer[3] = 0xFF;
+	usb_buffer[(sizeof(usb_buffer)/2) - 1] = (int16_t)0xEF;
+	usb_buffer[(sizeof(usb_buffer)/2) - 2] = (int16_t)0xEF;
+	usb_buffer[(sizeof(usb_buffer)/2) - 3] = (int16_t)0xEF;
+	usb_buffer[(sizeof(usb_buffer)/2) - 4] = (int16_t)0xEF;
+	
+	CDC_Transmit_FS((uint8_t *)usb_buffer, sizeof(usb_buffer));
+	
+	HAL_Delay(1000/delay_fps);
+}
+
+
 
 /* USER CODE END 4 */
 

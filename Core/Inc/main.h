@@ -53,6 +53,7 @@ extern "C" {
 void Error_Handler(void);
 
 /* USER CODE BEGIN EFP */
+void CDC_Control_FS_forwarding(uint8_t cmd, uint8_t* pbuf, uint16_t length);
 
 /* USER CODE END EFP */
 
