@@ -62,7 +62,7 @@ UART_HandleTypeDef huart1;
 
 static uint16_t eeMLX90640[832];  
 static float mlx90640To[768];
-static int16_t usb_buffer[768 + 8];	//四个 0xFF帧头，+ 四个 0xEF 帧尾
+static int16_t usb_buffer[768 + 8];	//四个 0xFFFF帧头，+ 四个 0xEFEF 帧尾
 uint16_t frame[834];
 float emissivity=0.95;
 
@@ -421,17 +421,6 @@ void usb_control_handler(void)
 			}
 			case type_get_fps:
 			{
-				usb_control_hand.data[0] = 0xFF;
-				usb_control_hand.data[1] = 0xFF;
-				usb_control_hand.data[2] = 0xFF;
-				usb_control_hand.data[3] = 0xFF;
-				usb_control_hand.data[4] = delay_fps;
-				usb_control_hand.data[5] = 0xEF;
-				usb_control_hand.data[6] = 0xEF;
-				usb_control_hand.data[7] = 0xEF;
-				usb_control_hand.data[8] = 0xEF;
-				CDC_Transmit_FS((uint8_t *)usb_control_hand.data, 9);
-				HAL_Delay(100);
 				break;
 			}
 		}
@@ -469,14 +458,14 @@ void mlx90640_refresh(void)
 		usb_buffer[4 + i] = (int16_t)(mlx90640To[i]*100);
 	}
 
-	usb_buffer[0] = 0xFF;
-	usb_buffer[1] = 0xFF;
-	usb_buffer[2] = 0xFF;
-	usb_buffer[3] = 0xFF;
-	usb_buffer[(sizeof(usb_buffer)/2) - 1] = (int16_t)0xEF;
-	usb_buffer[(sizeof(usb_buffer)/2) - 2] = (int16_t)0xEF;
-	usb_buffer[(sizeof(usb_buffer)/2) - 3] = (int16_t)0xEF;
-	usb_buffer[(sizeof(usb_buffer)/2) - 4] = (int16_t)0xEF;
+	usb_buffer[0] = 0xFFFF;
+	usb_buffer[1] = 0xFFFF;
+	usb_buffer[2] = 0xFFFF;
+	usb_buffer[3] = 0xFFFF;
+	usb_buffer[(sizeof(usb_buffer)/2) - 1] = (int16_t)0xEFEF;
+	usb_buffer[(sizeof(usb_buffer)/2) - 2] = (int16_t)0xEFEF;
+	usb_buffer[(sizeof(usb_buffer)/2) - 3] = (int16_t)0xEFEF;
+	usb_buffer[(sizeof(usb_buffer)/2) - 4] = (int16_t)0xEFEF;
 	
 	CDC_Transmit_FS((uint8_t *)usb_buffer, sizeof(usb_buffer));
 	
