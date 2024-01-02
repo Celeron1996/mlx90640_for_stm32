@@ -61,8 +61,10 @@ UART_HandleTypeDef huart1;
 /* USER CODE BEGIN PV */
 
 static uint16_t eeMLX90640[832];  
-static float mlx90640To[768];
-static int16_t usb_buffer[768 + 8];	//四个 0xFFFF帧头，+ 四个 0xEFEF 帧尾
+//static float mlx90640To[768];	/* 获取温度用 */
+static float mlx90640Image[768];	/* 获取热图用 */
+//static int16_t usb_buffer[768 + 8];	//四个 0xFFFF帧头，+ 四个 0xEFEF 帧尾
+static uint8_t usb_buffer[sizeof(mlx90640Image) + 16];	/* 除了image数据，包头八个字节0xff，包尾八个字节0xEFEF */
 uint16_t frame[834];
 float emissivity=0.95;
 
@@ -437,6 +439,7 @@ void usb_control_handler(void)
   */
 void mlx90640_refresh(void)
 {
+	#if 0	/* 获取温度 */
 	int status;
 
 	status = MLX90640_GetFrameData(MLX90640_ADDR, frame);
@@ -468,6 +471,40 @@ void mlx90640_refresh(void)
 	usb_buffer[(sizeof(usb_buffer)/2) - 4] = (int16_t)0xEFEF;
 	
 	CDC_Transmit_FS((uint8_t *)usb_buffer, sizeof(usb_buffer));
+	
+	HAL_Delay(1000/delay_fps);
+	#endif
+	
+	int status;
+	int i;
+	uint8_t *p_image = (uint8_t *)mlx90640Image;
+	
+	status = MLX90640_GetFrameData(MLX90640_ADDR, frame);
+	if (status < 0)
+	{
+		printf("GetFrame Error: %d\r\n",status);
+		HAL_Delay(500);
+		return;
+	}
+	
+	MLX90640_GetImage(frame, &mlx90640, mlx90640Image);
+	
+	for (i = 0; i < 8; i++)
+	{
+		usb_buffer[i] = 0xFF;
+	}
+	
+	for (; i < sizeof(mlx90640Image); i++)
+	{
+		usb_buffer[i] = *p_image++;
+	}
+	
+	for (; i < sizeof(usb_buffer); i++)
+	{
+		usb_buffer[i] = 0xEF;
+	}
+	
+	CDC_Transmit_FS(usb_buffer, sizeof(usb_buffer));
 	
 	HAL_Delay(1000/delay_fps);
 }
