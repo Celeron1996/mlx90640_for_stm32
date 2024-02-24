@@ -62,7 +62,7 @@ UART_HandleTypeDef huart1;
 
 static uint16_t eeMLX90640[832];  
 static float mlx90640To[768];
-static int16_t usb_buffer[768 + 8];	//四个 0xFFFF帧头，+ 四个 0xEFEF 帧尾
+static int16_t usb_buffer[768 + 8];	//四个 0xFFFF帧头�?+ 四个 0xEFEF 帧尾
 uint16_t frame[834];
 float emissivity=0.95;
 
@@ -321,7 +321,7 @@ int fputc(int c, FILE *f)
 
 
 /**
-  * @brief  CDC 控制接口函数的转发函数
+  * @brief  CDC 控制接口函数的转发函�?
   * @param  cmd: Command code
   * @param  pbuf: Buffer containing command data (request parameters)
   * @param  length: Number of data to be sent (in bytes)
@@ -346,7 +346,7 @@ void CDC_Control_FS_forwarding(uint8_t cmd, uint8_t* pbuf, uint16_t length)
 
 
 /**
-  * @brief  处理usb控制端口的数据
+  * @brief  处理usb控制端口的数�?
   * @retval null
   */
 void usb_control_handler(void)
@@ -430,9 +430,9 @@ void usb_control_handler(void)
 }
 
 
-
+volatile static uint8_t usb_busy_flag = 0;
 /**
-  * @brief  采集 mlx 数据并上报
+  * @brief  采集 mlx 数据并上�?
   * @retval null
   */
 void mlx90640_refresh(void)
@@ -458,6 +458,7 @@ void mlx90640_refresh(void)
 		usb_buffer[4 + i] = (int16_t)(mlx90640To[i]*100);
 	}
 
+	while (usb_busy_flag){HAL_Delay(20);}
 	usb_buffer[0] = 0xFFFF;
 	usb_buffer[1] = 0xFFFF;
 	usb_buffer[2] = 0xFFFF;
@@ -467,12 +468,17 @@ void mlx90640_refresh(void)
 	usb_buffer[(sizeof(usb_buffer)/2) - 3] = (int16_t)0xEFEF;
 	usb_buffer[(sizeof(usb_buffer)/2) - 4] = (int16_t)0xEFEF;
 	
+	usb_busy_flag = 1;
 	CDC_Transmit_FS((uint8_t *)usb_buffer, sizeof(usb_buffer));
 	
-	HAL_Delay(1000/delay_fps);
+	//HAL_Delay(20);
 }
 
 
+void usb_send_done_callback(void)
+{
+	usb_busy_flag = 0;
+}
 
 /* USER CODE END 4 */
 
